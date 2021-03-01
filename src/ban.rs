@@ -71,11 +71,17 @@ pub(crate) fn temp_ban(args: Args) -> Result<(), Error> {
 
     use std::str::FromStr;
 
-    let hours = u64::from_str(
+    let hours = match u64::from_str(
         args.params
             .get("hours")
             .ok_or("unable to retrieve hours param")?,
-    )?;
+    ) {
+        Ok(hours) => hours,
+        Err(e) => {
+            api::send_reply(&args, &format!("{}", e))?;
+            return Err(Box::new(e));
+        }
+    };
 
     let reason = args
         .params
