@@ -60,6 +60,8 @@ pub(crate) fn post_message(args: Args) -> Result<(), Error> {
 
         let white_check_mark = ReactionType::from("✅");
         message.react(args.cx, white_check_mark)?;
+
+        cache_welcome_message(args.cx, message)?;
     }
     Ok(())
 }
@@ -123,6 +125,90 @@ pub(crate) fn assign_talk_role(cx: &Context, reaction: &Reaction) -> Result<(), 
             }
         }
     }
+    Ok(())
+}
+
+pub(crate) fn update_welcome_message(args: Args) -> Result<(), Error> {
+    use std::str::FromStr;
+
+    let new_message = &args
+        .params
+        .get("message")
+        .ok_or("unable to retrieve message param")?;
+
+    let welcome_message_is_not_cached = {
+        let data = args.cx.data.read();
+        !data.contains::<CachedWelcomeMessage>()
+    };
+
+    if welcome_message_is_not_cached {
+        info!("Welcome message not cached, caching");
+        let conn = DB.get()?;
+
+        let res = conn
+            .build_transaction()
+            .read_only()
+            .run::<_, Box<dyn std::error::Error>, _>(|| {
+                let res: Option<_> = messages::table
+                    .filter(messages::name.eq("welcome"))
+                    .first::<(i32, String, String, String)>(&conn)
+                    .optional()?;
+
+                Ok(res)
+            })?;
+
+        if let Some((_, _, message_id, channel_id)) = res {
+            let message = ChannelId::from(u64::from_str(&channel_id)?)
+                .message(args.cx, u64::from_str(&message_id)?)?;
+
+            cache_welcome_message(args.cx, message)?;
+        } else {
+            api::send_reply(
+                &args,
+                "No welcome message found, please post the welcome message",
+            )?;
+            return Ok(());
+        }
+    }
+
+    let mut data = args.cx.data.write();
+    let welcome_message = data.get_mut::<CachedWelcomeMessage>().unwrap();
+    welcome_message.edit(args.cx, |m| m.content(new_message))?;
+
+    Ok(())
+}
+
+pub(crate) struct CachedWelcomeMessage;
+
+impl TypeMapKey for CachedWelcomeMessage {
+    type Value = Message;
+}
+
+pub(crate) fn cache_welcome_message(cx: &Context, message: Message) -> Result<(), Error> {
+    let mut data = cx.data.write();
+    data.insert::<CachedWelcomeMessage>(message);
+
+    Ok(())
+}
+
+pub(crate) fn update_help(args: Args) -> Result<(), Error> {
+    let help_string = format!(
+        "
+Update the existing welcome message content
+```
+{command}
+```
+**Example:**
+```
+?CoC update my new message
+
+```
+will update the welcome message to \"my new message\"
+",
+        command = "?CoC update message..."
+    );
+
+    api::send_reply(&args, &help_string)?;
     Ok(())
 }
 

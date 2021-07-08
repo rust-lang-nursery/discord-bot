@@ -180,6 +180,18 @@ fn app() -> Result<(), Error> {
         api::is_mod,
     );
 
+    cmds.add_protected(
+        "?CoC update message...",
+        welcome::update_welcome_message,
+        api::is_mod,
+    );
+    cmds.help_protected(
+        "?CoC update",
+        "Update the welcome message content",
+        welcome::update_help,
+        api::is_mod,
+    );
+
     // Post the welcome message to the welcome channel.
     cmds.add_protected("?CoC {channel}", welcome::post_message, api::is_mod);
     cmds.help_protected(
@@ -188,7 +200,6 @@ fn app() -> Result<(), Error> {
         welcome::help,
         api::is_mod,
     );
-
     let menu = cmds.menu();
     cmds.add("?help", move |args: Args| {
         let output = main_menu(&args, menu.as_ref().unwrap());
