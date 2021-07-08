@@ -13,6 +13,7 @@ mod command_history;
 mod commands;
 mod crates;
 mod db;
+mod godbolt;
 mod jobs;
 mod playground;
 mod schema;
@@ -151,6 +152,35 @@ fn app() -> Result<(), Error> {
             playground::help(args, "eval")
         });
     }
+
+    cmds.add("?godbolt flags={} version={} ```\ncode```", |args| {
+        let flags = args
+            .params
+            .get("flags")
+            .unwrap_or(&"-Copt-level=3 --edition=2018");
+        let rustc = args.params.get("rustc").unwrap_or(&"nightly");
+
+        let code = args
+            .params
+            .get("code")
+            .ok_or("Unable to retrieve param: code")?;
+        let (lang, text) = match godbolt::compile_rust_source(args.http, code, flags, rustc)? {
+            godbolt::Compilation::Success { asm } => ("x86asm", asm),
+            godbolt::Compilation::Error { stderr } => ("rust", stderr),
+        };
+
+        api::reply_potentially_long_text(
+            &args,
+            &format!("```{}\n{}", lang, text),
+            "\n```",
+            "Note: the output was truncated",
+        )?;
+
+        Ok(())
+    });
+    cmds.help("?godbolt", "View assembly using Godbolt", |args| {
+        godbolt::help(args)
+    });
 
     // Slow mode.
     // 0 seconds disables slowmode
